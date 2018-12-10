@@ -34,48 +34,58 @@ for gene in geneList.split(','):
     # recreate the following URL but replacing with the relevant gene
     # "https://api.omim.org/api/entry/search?search=IRF6&include=allelicVariantList&format=json&apiKey=Wqy5lssmS7uWGdpyy8H9zw"
     r_omim = requests.post('https://api.omim.org/api/entry/search?', verify=True, data={'search': gene, 'include': 'allelicVariantList', 'format':'json', 'apiKey':'Wqy5lssmS7uWGdpyy8H9zw'})
-    # return type is JSON so process the text to an associative array
-    parsed_json_omim = json.loads(r_omim.text)
-    # allelicVariants is contained in one of the "entry" records in "entryList"
-    # need to search each entrylist record (values) for allelicVariants
-    for entry in parsed_json_omim['omim']['searchResponse']['entryList']:
-        for value in entry.values():
-            if 'allelicVariantList' in value:
-                # variants and consequences are contained within "allelicVariantList" list
-                for avar in value['allelicVariantList']:
-                    # find the interesting fields we want
-                    for item in ['dbSnps','name','mutations','status','clinvarAccessions','number','mimNumber']:
-                        # check the field is in the allelicVariant record first
-                        if item in avar['allelicVariant']:
-                            itemval = avar['allelicVariant'][item]
-                            print( "{} => {}".format(item,itemval) )
-                            # if we are looking at the dbSNP field then head off the ensembl for the SNP data
-                            if item == 'dbSnps':
-                                # this is grch37
-                                url = 'https://grch37.rest.ensembl.org/variation/human/'+itemval
-                                # again return type is JSON so bring the data back to an associative array
-                                r_ensembl = requests.get(url, data={'content-type':'application/json'}, verify=True)
-                                parsed_json_ensembl = json.loads(r_ensembl.text)
-                                # interesting fields
-                                for param in ['mappings','clinical_significance','synonyms']:
-                                    # again check that the field exists in the record
-                                    if param in parsed_json_ensembl:
-                                        # if it's in there then process the contents
-                                        for data in parsed_json_ensembl[param]:
-                                            # the mappings record contains the location information we want
-                                            if param == 'mappings':
-                                                for coord in ['seq_region_name','strand','start','end','allele_string']:
-                                                    print ( "\t{} => {}".format(coord,data[coord]) )
-                                            # the clinical_significance and synonyms records are arrays
+    # error if we get anything other than a 200 status code
+    if ( r_omim.status_code == 200 ):
+        # return type is JSON so process the text to an associative array
+        parsed_json_omim = json.loads(r_omim.text)
+        # allelicVariants is contained in one of the "entry" records in "entryList"
+        # need to search each entrylist record (values) for allelicVariants
+        for entry in parsed_json_omim['omim']['searchResponse']['entryList']:
+            for value in entry.values():
+                if 'allelicVariantList' in value:
+                    # variants and consequences are contained within "allelicVariantList" list
+                    for avar in value['allelicVariantList']:
+                        # find the interesting fields we want
+                        for item in ['dbSnps','name','mutations','status','clinvarAccessions','number','mimNumber']:
+                            # check the field is in the allelicVariant record first
+                            if item in avar['allelicVariant']:
+                                itemval = avar['allelicVariant'][item]
+                                print( "{} => {}".format(item,itemval) )
+                                # if we are looking at the dbSNP field then head off the ensembl for the SNP data
+                                if item == 'dbSnps':
+                                    # this is grch37
+                                    url = 'https://grch37.rest.ensembl.org/variation/human/'+itemval
+                                    # again return type is JSON so bring the data back to an associative array
+                                    r_ensembl = requests.get(url, data={'content-type':'application/json'}, verify=True)
+                                    if ( r_ensembl.status_code == 200 ):
+                                        parsed_json_ensembl = json.loads(r_ensembl.text)
+                                        # interesting fields
+                                        for param in ['mappings','clinical_significance','synonyms']:
+                                            # again check that the field exists in the record
+                                            if param in parsed_json_ensembl:
+                                                # if it's in there then process the contents
+                                                for data in parsed_json_ensembl[param]:
+                                                    # the mappings record contains the location information we want
+                                                    if param == 'mappings':
+                                                        for coord in ['seq_region_name','strand','start','end','allele_string']:
+                                                            print ( "\t{} => {}".format(coord,data[coord]) )
+                                                    # the clinical_significance and synonyms records are arrays
+                                                    else:
+                                                        print ( "\t{} => {}".format(param,data) )
                                             else:
-                                                print ( "\t{} => {}".format(param,data) )
+                                                print("\t{} not in this record".format(param))
                                     else:
-                                        print("\t{} not in this record".format(param))
-                        else:
-                            print("{} not in this record".format(item))
+                                        print("\tfailed with error code {}".format(r_ensembl.status_code))
+                                        continue
 
-            else: 
-                continue
+                            else:
+                                print("{} not in this record".format(item))
+
+                else: 
+                    continue
+    else:
+        print( "failed with error code {}".format( r_omim.status_code ) )
+        continue
     break
 
 # Amelie
